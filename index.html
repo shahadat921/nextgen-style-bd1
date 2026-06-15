@@ -9,29 +9,23 @@
   <title>NextGen Style BD</title>
   <style>
     *{box-sizing:border-box}
-    body{margin:0;background:#070710}
-    /* Fullscreen video — no crop */
+    body{margin:0;background:#070710;-webkit-tap-highlight-color:transparent}
     video:fullscreen{object-fit:contain!important;background:#000;width:100vw!important;height:100vh!important}
     video:-webkit-full-screen{object-fit:contain!important;background:#000;width:100vw!important;height:100vh!important}
-    video:-moz-full-screen{object-fit:contain!important;background:#000}
     :fullscreen{background:#000}
     :-webkit-full-screen{background:#000}
-    /* Hide Babel warning in console */
-    .babel-warning{display:none}
+    /* Smooth transitions */
+    button{-webkit-tap-highlight-color:transparent;outline:none}
+    input,select{-webkit-appearance:none}
   </style>
 </head>
 <body>
   <div id="root"></div>
-
-  <!-- Suppress Babel production warning -->
   <script>
-    var _origWarn = console.warn;
-    console.warn = function(msg) {
-      if (typeof msg === "string" && msg.includes("Babel")) return;
-      _origWarn.apply(console, arguments);
-    };
+    // Suppress Babel production warning
+    var _cw = console.warn;
+    console.warn = function(m) { if (typeof m === "string" && m.includes("Babel")) return; _cw.apply(console, arguments); };
   </script>
-
   <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
@@ -174,6 +168,11 @@ function FIFASection({ lang, channels }) {
   const vidRef = useRef(null);
   const hlsRef = useRef(null);
   const bn = lang === "bn";
+
+  // Scroll to top on view change
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [view]);
 
   // Load hls.js via script tag (not dynamic import)
   useEffect(() => {
@@ -518,7 +517,7 @@ function PlayerView({ activeCh, vidRef, hlsRef, pState, setPState, bn, dayM, cds
   const [ctrlVisible, setCtrlVisible] = useState(true);
   const [isFS, setIsFS] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const [fitMode, setFitMode] = useState("contain"); // contain | cover | fill
+  const [fitMode, setFitMode] = useState("contain");
   const hideRef = useRef(null);
   const wrapRef = useRef(null);
 
@@ -534,6 +533,21 @@ function PlayerView({ activeCh, vidRef, hlsRef, pState, setPState, bn, dayM, cds
     showCtrl();
     return () => clearTimeout(hideRef.current);
   }, [pState]);
+
+  // Back button inside FIFA player
+  useEffect(() => {
+    const onPop = (e) => {
+      e.preventDefault();
+      if (sv === 'player') { setSv('channels'); if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; } return; }
+      if (sv === 'channels') { setSv('banner'); return; }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [sv]);
+
+  useEffect(() => {
+    window.history.pushState({ sv }, '', window.location.pathname);
+  }, [sv]);
 
   // Fullscreen change listener
   useEffect(() => {
@@ -803,9 +817,14 @@ function AdminPanel({ channels, setChannels, onClose }) {
             </div>
           </div>
         ) : (
-          <button onClick={startNew} style={{ width: "100%", background: "#c8a96e18", border: "1px dashed #c8a96e66", borderRadius: 12, padding: "11px 0", color: "#c8a96e", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", marginBottom: 13 }}>
-            ➕ নতুন চ্যানেল যোগ করুন
-          </button>
+          <div style={{ display: "flex", gap: 8, marginBottom: 13 }}>
+            <button onClick={startNew} style={{ flex: 1, background: "#c8a96e18", border: "1px dashed #c8a96e66", borderRadius: 12, padding: "11px 0", color: "#c8a96e", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+              ➕ নতুন চ্যানেল
+            </button>
+            <button onClick={() => { if (window.confirm("সব চ্যানেল রিসেট করবেন?")) { setChannels(DEFAULT_CHANNELS); try { localStorage.removeItem('ngbd_channels'); } catch {} } }} style={{ background: "#e0525218", border: "1px solid #e0525244", borderRadius: 12, padding: "11px 14px", color: "#e05252", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+              🔄 রিসেট
+            </button>
+          </div>
         )}
 
         <div style={{ fontSize: 10, opacity: .28, marginBottom: 8 }}>{channels.length}টি চ্যানেল</div>
@@ -875,18 +894,52 @@ function App() {
   const [toast, setToast]       = useState(null);
   const [form, setForm]         = useState({ name: "", phone: "", address: "", district: "", area: "dhaka" });
   const [order, setOrder]       = useState(null);
-  const [lang, setLang]         = useState("bn");
-  const [channels, setChannels] = useState(DEFAULT_CHANNELS);
+  const [lang, setLang] = useState(() => {
+    try { return localStorage.getItem('ngbd_lang') || 'bn'; } catch { return 'bn'; }
+  });
+  const [channels, setChannels] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ngbd_channels');
+      return saved ? JSON.parse(saved) : DEFAULT_CHANNELS;
+    } catch { return DEFAULT_CHANNELS; }
+  });
+
+  // Save channels to localStorage whenever they change
+  useEffect(() => {
+    try { localStorage.setItem('ngbd_channels', JSON.stringify(channels)); } catch {}
+  }, [channels]);
   const [showAdmin, setShowAdmin]   = useState(false);
   const [adminAuth, setAdminAuth]   = useState(false);
   const [adminPw, setAdminPw]       = useState("");
   const slTimer = useRef(null);
   const bn = lang === "bn";
 
+  // Scroll to top on view change
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [view]);
+
   useEffect(() => {
     slTimer.current = setInterval(() => setSIdx(i => (i + 1) % SLIDES.length), 3400);
     return () => clearInterval(slTimer.current);
   }, []);
+
+  // ── Back button fix ──
+  useEffect(() => {
+    const onPop = (e) => {
+      e.preventDefault();
+      if (view === 'cart') { setView('shop'); return; }
+      if (view === 'checkout') { setView('cart'); return; }
+      if (view === 'success') { setView('shop'); return; }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [view]);
+
+  // Push history state on view change
+  useEffect(() => {
+    window.history.pushState({ view }, '', window.location.pathname);
+  }, [view]);
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
@@ -1294,4 +1347,4 @@ function App() {
 ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
   </script>
 </body>
-  </html>
+</html>
